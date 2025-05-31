@@ -17,7 +17,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 create_table = '''
     CREATE TABLE IF NOT EXISTS users(
         id SERIAL PRIMARY KEY,
-        tg_id BYTEA NOT NULL,
+        tg_id VARCHAR(100) NOT NULL,
         username VARCHAR(100) NOT NULL,
         balance INTEGER DEFAULT 0,
         create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -28,31 +28,36 @@ connection.commit()
 
 def exists_user(tg_id):
     select = '''
-        SELECT tg_id FROM users;
+        SELECT * FROM users WHERE tg_id = (%s);
     '''
     cursor.execute(select, (tg_id,))
     connection.commit()
-    users = cursor.fetchall()
-    for (db_id,) in users:
-        if bcrypt.checkpw(tg_id, bytes(db_id)):
-            return True
-        else:
-            return False
+    users = cursor.fetchone()
+    if users:
+        return True
         
 def add_user(tg_id, username):
-    id_hashed = bcrypt.hashpw(tg_id, bcrypt.gensalt(rounds=12))
-
     insert = '''
         INSERT INTO users (tg_id, username) VALUES (%s, %s);
     '''
-    cursor.execute(insert, (id_hashed, username,))
+    cursor.execute(insert, (tg_id, username,))
     connection.commit()
     return True
+
+def get_balance(tg_id):
+    select = '''
+        SELECT * FROM users WHERE tg_id = (%s);
+    '''
+    cursor.execute(select, (tg_id,))
+    connection.commit()
+    users = cursor.fetchone()
+    return users[3]
+
 
 @bot.message_handler(commands=["start"])
 def start(message):
     username = message.from_user.username
-    tg_id = bytes(str(message.from_user.id), "utf-8")
+    tg_id = str(message.from_user.id)
     if exists_user(tg_id):
         markup = types.InlineKeyboardMarkup()
         btn1 = types.InlineKeyboardButton("Տեսնել իմ հաշիվը", callback_data="tesnel")
@@ -69,64 +74,27 @@ def start(message):
         markup.add(btn1, btn2, btn3)
         bot.reply_to(message, "Խնդրում եմ ընտրեք կոճակը", reply_markup=markup)
 
-
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
-    print(call.from_user.id)
+    user_id = str(call.from_user.id)
     if call.data == "tesnel":
-        print(call)
-        tg_id = bytes(str(call.from_user.id))
+        bot.send_message(call.message.chat.id, f"Ձեր հաշվի մնացորդը՝ {get_balance(user_id)} դրամ")
+    elif call.data == "avelacnel":
+        bot.send_message(call.message.chat.id, "Խնդրում եմ գրեք գումարի չափը")
+        bot.register_next_step_handler(call.message, avelacnel)
 
-        select = '''
-            SELECT tg_id FROM users;
+def avelacnel(message):
+    user_id = str(message.from_user.id)
+    sum = int(message.text)
+
+    if sum <= 100:
+        bot.reply_to(message, "Գումարի չափը պետք է 100 դրամից մեծ լինի")
+    else:
+        update = '''
+            UPDATE users SET balance = (%s) WHERE tg_id = (%s);
         '''
-        cursor.execute(select, (tg_id,))
+        cursor.execute(update, (get_balance(user_id) + sum, user_id))
         connection.commit()
-        users = cursor.fetchall()
-        for (db_id,) in users:
-            if bcrypt.checkpw(tg_id, bytes(db_id)):
-                select = '''
-                    SELECT * FROM users WHERE tg_id = (%s);
-                '''
-                cursor.execute(select, (db_id,))
-                connection.commit()
-                balance = cursor.fetchone()
-                print(balance)
-                if balance:
-                
-                    bot.send_message(call.message.chat.id, f"Ձեր հաշվի մնացորդը՝ {balance[3]}")
-                    return True
-        else:
-            return False
-    # elif call.data == "avelacnel":
-    #     # bot.register_next_step_handler(call.message, avelacnel)
-    # elif call.data == "poxancum":
-    #     bot.send_message(call.message.chat.id, "Խնդրում եմ գրեք տվյալ մարդու այդին")
-    #     # bot.register_next_step_handler(call.message, poxancum)
-
-# def tesnel(message):
-#     tg_id = bytes(str(message.from_user.id))
-
-#     select = '''
-#         SELECT tg_id FROM users;
-#     '''
-#     cursor.execute(select, (tg_id,))
-#     connection.commit()
-#     users = cursor.fetchall()
-#     for (db_id,) in users:
-#         if bcrypt.checkpw(tg_id, bytes(db_id)):
-#             select = '''
-#                 SELECT * FROM users WHERE tg_id = (%s);
-#             '''
-#             cursor.execute(select, (db_id,))
-#             connection.commit()
-#             balance = cursor.fetchone()
-#             print(balance)
-#             if balance:
-                
-#                 bot.reply_to(message, f"Ձեր հաշվի մնացորդը՝ {balance[3]}")
-#                 return True
-#         else:
-#             return False
+        bot.reply_to(message, "Ձեր գումարը ավելացվեց ձեր հաշվին")
 
 bot.polling()
