@@ -3,16 +3,7 @@ import psycopg2
 import bcrypt
 from telebot import types
 
-connection = psycopg2.connect(
-    host="localhost",
-    database="botwallet",
-    user="postgres",
-    password="MH2012"
-)
-cursor = connection.cursor()
 
-BOT_TOKEN = "8046691167:AAHYyMtVjpFHnlycQ_G3sB1AWJAV0clZVmE"
-bot = telebot.TeleBot(BOT_TOKEN)
 
 create_table = '''
     CREATE TABLE IF NOT EXISTS users(
